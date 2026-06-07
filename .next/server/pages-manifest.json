@@ -1,10 +1,1 @@
-{
-  "/_app": "pages/_app.js",
-  "/_error": "pages/_error.js",
-  "/_document": "pages/_document.js",
-  "/api/signal": "pages/api/signal.js",
-  "/": "pages/index.js",
-  "/api/auth/nonce": "pages/api/auth/nonce.js",
-  "/api/auth/me": "pages/api/auth/me.js",
-  "/api/auth/verify": "pages/api/auth/verify.js"
-}
+{"/_app":"pages/_app.js","/api/auth/logout":"pages/api/auth/logout.js","/api/auth/me":"pages/api/auth/me.js","/api/auth/nonce":"pages/api/auth/nonce.js","/api/auth/verify":"pages/api/auth/verify.js","/api/signal":"pages/api/signal.js","/":"pages/index.html","/_error":"pages/_error.js","/_document":"pages/_document.js","/404":"pages/404.html"}
