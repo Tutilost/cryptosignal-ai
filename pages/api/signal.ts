@@ -56,7 +56,7 @@ function calcEMA(closes: number[], period: number): number {
   const k = 2 / (period + 1)
   let ema = closes[0]
   for (let i = 1; i < closes.length; i++) ema = closes[i] * k + ema * (1 - k)
-  return ema
+  return parseFloat(ema.toFixed(2))
 }
 
 function calcMACD(closes: number[]) {
@@ -65,14 +65,9 @@ function calcMACD(closes: number[]) {
   return parseFloat((ema12 - ema26).toFixed(2))
 }
 
-function calcSMA(closes: number[], period: number): number {
-  const slice = closes.slice(-period)
-  return parseFloat((slice.reduce((a, b) => a + b, 0) / slice.length).toFixed(2))
-}
-
 function calcBollinger(closes: number[], period = 20) {
-  const sma = calcSMA(closes, period)
   const slice = closes.slice(-period)
+  const sma = slice.reduce((a, b) => a + b, 0) / slice.length
   const variance = slice.reduce((sum, v) => sum + Math.pow(v - sma, 2), 0) / period
   const std = Math.sqrt(variance)
   return {
@@ -90,16 +85,16 @@ function calcVolumeScore(candles: any[]): number {
 
 function buildSignal(
   pair: string, rsi: number, macd: number, volume: number, price: number,
-  bollinger: any, sma50: number, sma200: number, fearGreed: any
+  bollinger: any, ema7: number, ema21: number, ema50: number, fearGreed: any
 ) {
   let signal: 'LONG' | 'SHORT' | 'NEUTRO'
   let confidence: number
   let reasoning: string[] = []
 
-  const aboveSma50 = price > sma50
-  const aboveSma200 = price > sma200
   const nearLower = price <= bollinger.lower * 1.02
   const nearUpper = price >= bollinger.upper * 0.98
+  const ema7Above21 = ema7 > ema21
+  const ema21Above50 = ema21 > ema50
   const bullishFG = fearGreed.value < 35
   const bearishFG = fearGreed.value > 70
 
@@ -110,10 +105,10 @@ function buildSignal(
   if (rsi > 65) bearPoints += 2
   if (macd > 0) bullPoints += 1
   if (macd < 0) bearPoints += 1
-  if (aboveSma50) bullPoints += 1
-  if (!aboveSma50) bearPoints += 1
-  if (aboveSma200) bullPoints += 1
-  if (!aboveSma200) bearPoints += 1
+  if (ema7Above21) bullPoints += 1
+  if (!ema7Above21) bearPoints += 1
+  if (ema21Above50) bullPoints += 1
+  if (!ema21Above50) bearPoints += 1
   if (nearLower) bullPoints += 2
   if (nearUpper) bearPoints += 2
   if (bullishFG) bullPoints += 1
@@ -124,26 +119,26 @@ function buildSignal(
     confidence = Math.min(95, 50 + bullPoints * 5)
     reasoning = [
       `RSI em ${rsi} — ${rsi < 35 ? 'sobrevenda confirmada' : 'zona neutra-bullish'}`,
-      `Preço ${nearLower ? 'tocando banda inferior de Bollinger — suporte forte' : `acima da SMA50 ($${sma50.toLocaleString()})`}`,
-      `Tendência de longo prazo: ${aboveSma200 ? '✓ acima da SMA200' : '✗ abaixo da SMA200'}`,
-      `Sentimento: ${fearGreed.label} (${fearGreed.value}) — ${bullishFG ? 'medo cria oportunidade' : 'neutro'}`
+      `EMA7 (${ema7.toLocaleString()}) ${ema7Above21 ? 'acima' : 'abaixo'} da EMA21 — ${ema7Above21 ? 'tendência de alta' : 'atenção'}`,
+      `Bollinger: preço ${nearLower ? 'tocando banda inferior — suporte forte' : 'dentro das bandas'}`,
+      `Sentimento: ${fearGreed.label} (${fearGreed.value})${bullishFG ? ' — medo cria oportunidade' : ''}`
     ]
   } else if (bearPoints >= 5) {
     signal = 'SHORT'
     confidence = Math.min(95, 50 + bearPoints * 5)
     reasoning = [
       `RSI em ${rsi} — ${rsi > 65 ? 'sobrecompra confirmada' : 'zona neutra-bearish'}`,
-      `Preço ${nearUpper ? 'tocando banda superior de Bollinger — resistência forte' : `abaixo da SMA50 ($${sma50.toLocaleString()})`}`,
-      `Tendência de longo prazo: ${aboveSma200 ? 'ainda acima da SMA200' : '✗ abaixo da SMA200 — bearish'}`,
-      `Sentimento: ${fearGreed.label} (${fearGreed.value}) — ${bearishFG ? 'ganância excessiva, cuidado' : 'neutro'}`
+      `EMA7 (${ema7.toLocaleString()}) ${ema7Above21 ? 'ainda acima' : 'abaixo'} da EMA21 — ${!ema7Above21 ? 'tendência de baixa' : 'reversão possível'}`,
+      `Bollinger: preço ${nearUpper ? 'tocando banda superior — resistência forte' : 'dentro das bandas'}`,
+      `Sentimento: ${fearGreed.label} (${fearGreed.value})${bearishFG ? ' — ganância excessiva, cuidado' : ''}`
     ]
   } else {
     signal = 'NEUTRO'
     confidence = 45 + Math.abs(bullPoints - bearPoints) * 3
     reasoning = [
       `RSI em ${rsi} — sem pressão direcional clara`,
+      `EMA7: $${ema7.toLocaleString()} | EMA21: $${ema21.toLocaleString()} | EMA50: $${ema50.toLocaleString()}`,
       `Bollinger: upper $${bollinger.upper.toLocaleString()} / lower $${bollinger.lower.toLocaleString()}`,
-      `SMA50: $${sma50.toLocaleString()} | SMA200: $${sma200.toLocaleString()}`,
       `Sentimento: ${fearGreed.label} (${fearGreed.value})`
     ]
   }
@@ -151,9 +146,8 @@ function buildSignal(
   return {
     pair, signal, confidence, price,
     indicators: { rsi, macd, volume },
-    bollinger, sma50, sma200,
-    fearGreed,
-    reasoning,
+    bollinger, ema7, ema21, ema50,
+    fearGreed, reasoning,
     creditsUsed: 1, creditsRemaining: 49,
     timestamp: new Date().toISOString()
   }
@@ -169,20 +163,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { pair = 'BTC/USDT' } = req.body
 
   try {
-    const [candles, fearGreed] = await Promise.all([
-      fetchCandles(pair),
-      fetchFearGreed()
-    ])
+    const [candles, fearGreed] = await Promise.all([fetchCandles(pair), fetchFearGreed()])
     const closes = candles.map((c: any) => c.close)
     const rsi = calcRSI(closes)
     const macd = calcMACD(closes)
     const volume = calcVolumeScore(candles)
     const price = closes[closes.length - 1]
     const bollinger = calcBollinger(closes)
-    const sma50 = calcSMA(closes, Math.min(50, closes.length))
-    const sma200 = calcSMA(closes, Math.min(200, closes.length))
+    const ema7 = calcEMA(closes, 7)
+    const ema21 = calcEMA(closes, 21)
+    const ema50 = calcEMA(closes, Math.min(50, closes.length))
 
-    res.json(buildSignal(pair, rsi, macd, volume, price, bollinger, sma50, sma200, fearGreed))
+    res.json(buildSignal(pair, rsi, macd, volume, price, bollinger, ema7, ema21, ema50, fearGreed))
   } catch (err: any) {
     res.status(500).json({ error: 'Erro ao buscar dados: ' + err.message })
   }
