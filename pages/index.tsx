@@ -6,13 +6,12 @@ declare global {
 }
 
 type User = { address: string; credits: number }
+type PairInfo = { symbol: string; name: string; change24h: number }
 type Signal = {
   pair: string; signal: 'LONG' | 'SHORT' | 'NEUTRO'
   confidence: number; indicators: { rsi: number; macd: number; volume: number }
   reasoning: string[]; creditsUsed: number; creditsRemaining: number; timestamp: string
 }
-
-const PAIRS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'ARB/USDT', 'OP/USDT']
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null)
@@ -22,6 +21,7 @@ export default function Home() {
   const [selectedPair, setSelectedPair] = useState('BTC/USDT')
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState('')
+  const [pairs, setPairs] = useState<PairInfo[]>([])
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -30,43 +30,33 @@ export default function Home() {
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    fetch('/api/pairs')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { if (Array.isArray(data) && data.length > 0) setPairs(data) })
+  }, [])
+
   const connectWallet = useCallback(async () => {
     setError('')
     setConnecting(true)
     try {
-      // Detecta carteira disponível
       const provider = window.ethereum
-      if (!provider) throw new Error('Nenhuma carteira encontrada. Instale MetaMask ou OKX Wallet.')
-
+      if (!provider) throw new Error('Nenhuma carteira encontrada.')
       const accounts: string[] = await provider.request({ method: 'eth_requestAccounts' })
       const address = accounts[0]
-
-      // Pede nonce
       const nonceRes = await fetch('/api/auth/nonce', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address })
       })
       const { nonce } = await nonceRes.json()
-
-      // Mensagem simples para assinar
       const message = `Entrar no CryptoSignal AI\n\nEndereço: ${address}\nNonce: ${nonce}\nEssa ação não move fundos.`
-
-      // Assina
-      const signature = await provider.request({
-        method: 'personal_sign',
-        params: [message, address]
-      })
-
-      // Verifica
+      const signature = await provider.request({ method: 'personal_sign', params: [message, address] })
       const verifyRes = await fetch('/api/auth/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, signature, address })
       })
       const data = await verifyRes.json()
       if (!verifyRes.ok) throw new Error(data.error)
-
       setUser({ address: data.address, credits: data.credits })
     } catch (err: any) {
       setError(err.message || 'Erro ao conectar')
@@ -87,8 +77,7 @@ export default function Home() {
     setError('')
     try {
       const res = await fetch('/api/signal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pair: selectedPair })
       })
       const data = await res.json()
@@ -124,7 +113,6 @@ export default function Home() {
             )}
           </div>
         </header>
-
         <main style={S.main}>
           {!user ? (
             <div style={S.loginWrap}>
@@ -138,7 +126,7 @@ export default function Home() {
                   ))}
                 </div>
                 {error && <div style={S.errBox}>{error}</div>}
-                <button onClick={connectWallet} disabled={connecting} style={{...S.connectBtn, opacity: connecting ? 0.7 : 1}}>
+                <button onClick={connectWallet} disabled={connecting} style={{...S.connectBtn,opacity:connecting?0.7:1}}>
                   {connecting ? 'Aguardando carteira...' : '◈ Conectar Carteira'}
                 </button>
                 <p style={{fontSize:12,color:'#404060',marginTop:12}}>Funciona com MetaMask, OKX Wallet e WalletConnect</p>
@@ -153,24 +141,25 @@ export default function Home() {
                 </div>
                 <div style={{display:'flex',gap:12}}>
                   <select value={selectedPair} onChange={e => setSelectedPair(e.target.value)} style={S.select}>
-                    {PAIRS.map(p => <option key={p}>{p}</option>)}
+                    {pairs.length > 0
+                      ? pairs.map(p => <option key={p.symbol} value={p.symbol}>{p.symbol} — {p.name} ({p.change24h?.toFixed(1)}%)</option>)
+                      : <option value="BTC/USDT">BTC/USDT</option>
+                    }
                   </select>
-                  <button onClick={generateSignal} disabled={generating || user.credits < 1}
-                    style={{...S.genBtn, opacity:(generating||user.credits<1)?0.5:1}}>
+                  <button onClick={generateSignal} disabled={generating||user.credits<1} style={{...S.genBtn,opacity:(generating||user.credits<1)?0.5:1}}>
                     {generating ? 'Analisando...' : '▶ Gerar'}
                   </button>
                 </div>
                 {error && <div style={{...S.errBox,marginTop:12}}>{error}</div>}
-                {user.credits === 0 && <div style={S.warnBox}>Créditos esgotados. Em breve: recarga via USDC na Base.</div>}
+                {user.credits===0 && <div style={S.warnBox}>Créditos esgotados. Em breve: recarga via USDC na Base.</div>}
               </div>
-
-              {signals.length === 0 ? (
+              {signals.length===0 ? (
                 <div style={{textAlign:'center',padding:'60px 0'}}>
                   <div style={{fontSize:36,color:'#2a2a3e',marginBottom:12}}>◈</div>
                   <p style={{fontSize:14,color:'#404060'}}>Nenhum sinal ainda. Selecione um par e clique em gerar.</p>
                 </div>
-              ) : signals.map((sig, i) => (
-                <div key={i} style={{...S.sigCard, borderLeft:`3px solid ${color(sig.signal)}`}}>
+              ) : signals.map((sig,i) => (
+                <div key={i} style={{...S.sigCard,borderLeft:`3px solid ${color(sig.signal)}`}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
                     <div style={{display:'flex',alignItems:'center',gap:10}}>
                       <span style={{fontFamily:'monospace',fontSize:15,fontWeight:700,color:'#e8e8f0'}}>{sig.pair}</span>
@@ -182,7 +171,7 @@ export default function Home() {
                     </div>
                   </div>
                   <div style={{display:'flex',gap:16,marginBottom:12}}>
-                    {[['RSI',sig.indicators.rsi],['MACD',sig.indicators.macd],['Volume',sig.indicators.volume+'%']].map(([l,v]) => (
+                    {[['RSI',sig.indicators.rsi],['MACD',sig.indicators.macd],['Volume',sig.indicators.volume+'%']].map(([l,v])=>(
                       <div key={String(l)}>
                         <div style={{fontSize:10,color:'#404060',textTransform:'uppercase',letterSpacing:'0.05em'}}>{l}</div>
                         <div style={{fontFamily:'monospace',fontSize:13,color:'#9090c0'}}>{v}</div>
@@ -190,7 +179,7 @@ export default function Home() {
                     ))}
                   </div>
                   <div style={{display:'flex',flexDirection:'column',gap:4,marginBottom:10}}>
-                    {sig.reasoning.map((r,j) => (
+                    {sig.reasoning.map((r,j)=>(
                       <div key={j} style={{display:'flex',gap:6,fontSize:12,color:'#6060a0'}}>
                         <span style={{color:color(sig.signal),fontSize:10}}>▸</span><span>{r}</span>
                       </div>
