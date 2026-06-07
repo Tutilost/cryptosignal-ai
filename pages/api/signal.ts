@@ -110,6 +110,53 @@ function calcTradeSetup(signal: string, price: number, bollinger: any, atr: numb
   return null
 }
 
+function calcStochRSI(closes: number[], rsiPeriod = 14, stochPeriod = 14, smoothK = 3, smoothD = 3) {
+  // Calcula RSI para cada ponto
+  const rsiValues: number[] = []
+  for (let i = rsiPeriod; i < closes.length; i++) {
+    let gains = 0, losses = 0
+    for (let j = i - rsiPeriod + 1; j <= i; j++) {
+      const diff = closes[j] - closes[j-1]
+      if (diff > 0) gains += diff; else losses += Math.abs(diff)
+    }
+    rsiValues.push(100 - 100/(1 + gains/(losses||0.001)))
+  }
+
+  // Calcula Stoch do RSI
+  const rawK: number[] = []
+  for (let i = stochPeriod - 1; i < rsiValues.length; i++) {
+    const slice = rsiValues.slice(i - stochPeriod + 1, i + 1)
+    const minRsi = Math.min(...slice)
+    const maxRsi = Math.max(...slice)
+    const range = maxRsi - minRsi
+    rawK.push(range === 0 ? 50 : ((rsiValues[i] - minRsi) / range) * 100)
+  }
+
+  // Suaviza K (média de smoothK períodos)
+  const smoothedK: number[] = []
+  for (let i = smoothK - 1; i < rawK.length; i++) {
+    const slice = rawK.slice(i - smoothK + 1, i + 1)
+    smoothedK.push(slice.reduce((a,b)=>a+b,0)/slice.length)
+  }
+
+  // D é a média de smoothD períodos do K suavizado
+  const smoothedD: number[] = []
+  for (let i = smoothD - 1; i < smoothedK.length; i++) {
+    const slice = smoothedK.slice(i - smoothD + 1, i + 1)
+    smoothedD.push(slice.reduce((a,b)=>a+b,0)/slice.length)
+  }
+
+  const k = smoothedK[smoothedK.length - 1] ?? 50
+  const d = smoothedD[smoothedD.length - 1] ?? 50
+  return {
+    k: parseFloat(k.toFixed(2)),
+    d: parseFloat(d.toFixed(2)),
+    signal: k > d ? 'bullish' : 'bearish',
+    overbought: k > 80,
+    oversold: k < 20
+  }
+}
+
 function calcATR(candles: any[], period = 14): number {
   if (candles.length < 2) return 0
   const trs = candles.slice(-period).map((c, i, arr) => {
@@ -119,7 +166,7 @@ function calcATR(candles: any[], period = 14): number {
   return trs.reduce((a,b)=>a+b,0)/trs.length
 }
 
-function buildSignal(pair: string, rsi: number, macd: number, volume: number, price: number, bollinger: any, ema7: number, ema21: number, ema50: number, fearGreed: any, atr: number) {
+function buildSignal(pair: string, rsi: number, macd: number, volume: number, price: number, bollinger: any, ema7: number, ema21: number, ema50: number, fearGreed: any, atr: number, stochRsi: any) {
   const nearLower = price<=bollinger.lower*1.02
   const nearUpper = price>=bollinger.upper*0.98
   let bull=0, bear=0
@@ -129,6 +176,8 @@ function buildSignal(pair: string, rsi: number, macd: number, volume: number, pr
   if (ema21>ema50) bull+=1; else bear+=1
   if (nearLower) bull+=2; if (nearUpper) bear+=2
   if (fearGreed.value<35) bull+=1; if (fearGreed.value>70) bear+=1
+  if (stochRsi.oversold && stochRsi.signal==="bullish") bull+=2
+  if (stochRsi.overbought && stochRsi.signal==="bearish") bear+=2
 
   let signal: 'LONG'|'SHORT'|'NEUTRO', confidence: number, reasoning: string[]
   if (bull>=5) {
