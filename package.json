@@ -8,21 +8,22 @@
     "start": "next start"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.43.1",
+    "axios": "^1.17.0",
+    "ethers": "^6.11.1",
+    "iron-session": "^8.0.1",
+    "jose": "^5.2.4",
+    "jsonwebtoken": "^9.0.2",
     "next": "14.2.3",
     "react": "^18",
     "react-dom": "^18",
-    "siwe": "^2.3.2",
-    "ethers": "^6.11.1",
-    "jsonwebtoken": "^9.0.2",
-    "jose": "^5.2.4",
-    "iron-session": "^8.0.1",
-    "@supabase/supabase-js": "^2.43.1"
+    "siwe": "^2.3.2"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "@types/jsonwebtoken": "^9.0.6"
+    "typescript": "^5"
   }
 }
