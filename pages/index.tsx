@@ -95,6 +95,37 @@ export default function Home() {
 
   const removeSignal = (i: number) => setSignals(prev => prev.filter((_, idx) => idx !== i))
 
+  const [showShop, setShowShop] = useState(false)
+  const [buyStep, setBuyStep] = useState<'select'|'pay'|'confirm'>('select')
+  const [selectedPkg, setSelectedPkg] = useState<any>(null)
+  const [txHash, setTxHash] = useState('')
+  const [confirming, setConfirming] = useState(false)
+  const [payError, setPayError] = useState('')
+  const [paySuccess, setPaySuccess] = useState(false)
+
+  const PACKAGES = [
+    { id:'starter', name:'Starter', credits:100, priceUSD:9, desc:'Para testar a plataforma' },
+    { id:'pro', name:'Pro', credits:500, priceUSD:29, desc:'Para traders ativos' },
+    { id:'elite', name:'Elite', credits:2000, priceUSD:99, desc:'Para traders profissionais' },
+  ]
+  const RECEIVE = '0x6FD92C51998dE3cea7Cdc9e2711E49C366A85D5e'
+
+  const confirmPayment = async () => {
+    if (!txHash || !selectedPkg) return
+    setConfirming(true); setPayError('')
+    try {
+      const data = await fetch('/api/payment/confirm', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ txHash, packageId: selectedPkg.id })
+      }).then(r=>r.json())
+      if (data.error) throw new Error(data.error)
+      setUser(prev => prev ? {...prev, credits: data.credits} : prev)
+      setPaySuccess(true)
+      setTimeout(() => { setShowShop(false); setPaySuccess(false); setBuyStep('select'); setTxHash('') }, 3000)
+    } catch(err:any) { setPayError(err.message) }
+    finally { setConfirming(false) }
+  }
+
   const short = (a: string) => `${a.slice(0,6)}...${a.slice(-4)}`
   const col = (s: string) => s==='LONG'?'#4ade80':s==='SHORT'?'#f87171':'#fbbf24'
   const bgc = (s: string) => s==='LONG'?'rgba(74,222,128,0.1)':s==='SHORT'?'rgba(248,113,113,0.1)':'rgba(251,191,36,0.1)'
@@ -111,7 +142,12 @@ export default function Home() {
             <div style={S.logo}><span style={S.logoMark}>◈</span><span style={S.logoTxt}>CryptoSignal AI</span></div>
             {user && (
               <div style={S.hRight}>
-                <div style={S.credits}><span style={{color:'#a78bfa',fontSize:12}}>◆</span><span style={S.credNum}>{user.credits}</span><span style={S.credLbl}>créditos</span></div>
+                <div style={S.credits} onClick={()=>setShowShop(true)} title="Comprar créditos">
+                  <span style={{color:'#a78bfa',fontSize:12}}>◆</span>
+                  <span style={S.credNum}>{user.credits}</span>
+                  <span style={S.credLbl}>créditos</span>
+                  <span style={{fontSize:11,color:'#7060a0',marginLeft:4}}>+</span>
+                </div>
                 <div style={S.addr}>{short(user.address)}</div>
                 <button onClick={logout} style={S.logoutBtn}>sair</button>
               </div>
@@ -319,6 +355,79 @@ export default function Home() {
           )}
         </main>
       </div>
+      {/* Modal de compra */}
+      {showShop && user && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}
+          onClick={()=>setShowShop(false)}>
+          <div style={{background:'#0a0a14',border:'1px solid #1a1a28',borderRadius:16,padding:28,maxWidth:420,width:'100%',maxHeight:'90vh',overflowY:'auto'}}
+            onClick={e=>e.stopPropagation()}>
+
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+              <h2 style={{fontFamily:'monospace',fontSize:16,color:'#e2e2f0'}}>◆ Comprar Créditos</h2>
+              <button onClick={()=>setShowShop(false)} style={{background:'none',border:'none',color:'#6060a0',cursor:'pointer',fontSize:18}}>✕</button>
+            </div>
+
+            {paySuccess ? (
+              <div style={{textAlign:'center',padding:'24px 0'}}>
+                <div style={{fontSize:40,marginBottom:12}}>✅</div>
+                <div style={{color:'#4ade80',fontFamily:'monospace',fontSize:16,fontWeight:700}}>Pagamento confirmado!</div>
+                <div style={{color:'#8080a0',fontSize:13,marginTop:8}}>{selectedPkg?.credits} créditos adicionados à sua conta.</div>
+              </div>
+            ) : buyStep === 'select' ? (
+              <>
+                <p style={{fontSize:13,color:'#8080a0',marginBottom:16}}>Aceita USDC e USDT na rede Base. Taxa de ~$0.01.</p>
+                <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                  {PACKAGES.map(pkg=>(
+                    <div key={pkg.id} onClick={()=>{setSelectedPkg(pkg);setBuyStep('pay')}}
+                      style={{background:'#0f0f1a',border:'1px solid #1e1e30',borderRadius:10,padding:'14px 16px',cursor:'pointer',transition:'border 0.2s'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                        <div>
+                          <div style={{fontFamily:'monospace',fontSize:14,fontWeight:700,color:'#e2e2f0'}}>{pkg.name}</div>
+                          <div style={{fontSize:12,color:'#8080a0',marginTop:2}}>{pkg.desc}</div>
+                        </div>
+                        <div style={{textAlign:'right'}}>
+                          <div style={{fontFamily:'monospace',fontSize:18,fontWeight:700,color:'#a78bfa'}}>${pkg.priceUSD}</div>
+                          <div style={{fontSize:11,color:'#4ade80'}}>{pkg.credits} créditos</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : buyStep === 'pay' ? (
+              <>
+                <button onClick={()=>setBuyStep('select')} style={{background:'none',border:'none',color:'#8080a0',cursor:'pointer',fontSize:13,marginBottom:16}}>← Voltar</button>
+                <div style={{background:'#0f0f1a',border:'1px solid #1e1e30',borderRadius:10,padding:16,marginBottom:16}}>
+                  <div style={{fontSize:12,color:'#8080a0',marginBottom:8}}>Envie exatamente:</div>
+                  <div style={{fontFamily:'monospace',fontSize:24,fontWeight:700,color:'#a78bfa',marginBottom:4}}>${selectedPkg?.priceUSD} USDC ou USDT</div>
+                  <div style={{fontSize:12,color:'#8080a0'}}>= {selectedPkg?.credits} créditos</div>
+                </div>
+                <div style={{background:'#0f0f1a',border:'1px solid #1e1e30',borderRadius:10,padding:16,marginBottom:16}}>
+                  <div style={{fontSize:12,color:'#8080a0',marginBottom:6}}>Para o endereço (rede Base):</div>
+                  <div style={{fontFamily:'monospace',fontSize:11,color:'#e2e2f0',wordBreak:'break-all',background:'#141424',padding:'8px 10px',borderRadius:6,border:'1px solid #1e1e30'}}>{RECEIVE}</div>
+                  <button onClick={()=>navigator.clipboard.writeText(RECEIVE)}
+                    style={{marginTop:8,background:'#1a1428',border:'1px solid #2d2050',color:'#a78bfa',fontSize:12,padding:'6px 12px',borderRadius:6,cursor:'pointer',fontFamily:'inherit',width:'100%'}}>
+                    📋 Copiar endereço
+                  </button>
+                </div>
+                <div style={{fontSize:12,color:'#8080a0',marginBottom:8}}>Após enviar, cole o hash da transação:</div>
+                <input
+                  type="text" placeholder="0x... (hash da transação)"
+                  value={txHash} onChange={e=>setTxHash(e.target.value)}
+                  style={{width:'100%',background:'#0f0f1a',border:'1px solid #1e1e30',color:'#e2e2f0',padding:'10px 14px',borderRadius:8,fontSize:13,fontFamily:'monospace',outline:'none',marginBottom:12}}
+                />
+                {payError && <div style={{color:'#f87171',fontSize:12,marginBottom:12}}>{payError}</div>}
+                <button onClick={confirmPayment} disabled={!txHash||confirming}
+                  style={{width:'100%',padding:'12px',background:'linear-gradient(135deg,#7c3aed,#a78bfa)',color:'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:'monospace',opacity:(!txHash||confirming)?0.5:1}}>
+                  {confirming?'Verificando...':'✓ Confirmar Pagamento'}
+                </button>
+                <p style={{fontSize:11,color:'#404060',marginTop:10,textAlign:'center'}}>Os créditos são adicionados automaticamente após confirmação on-chain</p>
+              </>
+            ) : null}
+          </div>
+        </div>
+      )}
+
       <style>{`
         *{box-sizing:border-box;margin:0;padding:0;}
         body{background:#08080f;}
