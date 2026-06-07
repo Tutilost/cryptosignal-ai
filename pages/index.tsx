@@ -271,6 +271,36 @@ export default function Home() {
                     </div>
                   )}
 
+                  {/* Trade Setup */}
+                  {(sig as any).tradeSetup && (
+                    <div style={{background:'#0f0f1a',border:`1px solid ${col(sig.signal)}33`,borderRadius:8,padding:'12px 14px',marginBottom:12}}>
+                      <div style={{fontSize:11,color:'#8080a0',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:10,fontWeight:600}}>
+                        📊 Trade Setup
+                      </div>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
+                        <div style={{background:'#141424',borderRadius:6,padding:'8px 12px',border:'0.5px solid #1e1e30'}}>
+                          <div style={{fontSize:10,color:'#8080a0',marginBottom:3}}>ENTRADA</div>
+                          <div style={{fontFamily:'monospace',fontSize:13,color:'#e2e2f0',fontWeight:600}}>${(sig as any).tradeSetup.entry?.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:6})}</div>
+                        </div>
+                        <div style={{background:'#1a0808',borderRadius:6,padding:'8px 12px',border:'0.5px solid #3d1010'}}>
+                          <div style={{fontSize:10,color:'#f87171',marginBottom:3}}>STOP LOSS</div>
+                          <div style={{fontFamily:'monospace',fontSize:13,color:'#f87171',fontWeight:600}}>${(sig as any).tradeSetup.stopLoss?.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:6})}</div>
+                          <div style={{fontSize:10,color:'#6060a0',marginTop:2}}>Risco: {(sig as any).tradeSetup.riskPct}%</div>
+                        </div>
+                      </div>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                        <div style={{background:'rgba(74,222,128,0.05)',borderRadius:6,padding:'8px 12px',border:'0.5px solid rgba(74,222,128,0.2)'}}>
+                          <div style={{fontSize:10,color:'#4ade80',marginBottom:3}}>ALVO 3:1 🎯</div>
+                          <div style={{fontFamily:'monospace',fontSize:13,color:'#4ade80',fontWeight:600}}>${(sig as any).tradeSetup.tp1?.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:6})}</div>
+                        </div>
+                        <div style={{background:'rgba(74,222,128,0.08)',borderRadius:6,padding:'8px 12px',border:'0.5px solid rgba(74,222,128,0.3)'}}>
+                          <div style={{fontSize:10,color:'#4ade80',marginBottom:3}}>ALVO 5:1 🚀</div>
+                          <div style={{fontFamily:'monospace',fontSize:13,color:'#4ade80',fontWeight:700}}>${(sig as any).tradeSetup.tp2?.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:6})}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:12}}>
                     {sig.reasoning.map((r,j)=>(
                       <div key={j} style={{display:'flex',gap:8,fontSize:13,color:'#b0b0c4',lineHeight:1.5}}>

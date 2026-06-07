@@ -2,9 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { verifyJWT } from '../../lib/auth'
 import axios from 'axios'
 
-// Cache simples em memória
 const cache = new Map<string, { data: any; ts: number }>()
-const CACHE_TTL = 3 * 60 * 1000 // 3 minutos
+const CACHE_TTL = 3 * 60 * 1000
 
 function getCache(key: string) {
   const c = cache.get(key)
@@ -18,8 +17,7 @@ async function getCoinGeckoId(symbol: string): Promise<string> {
   let list = cached
   if (!list) {
     const { data } = await axios.get('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1', { timeout: 8000 })
-    list = data
-    setCache('pairs_list', list)
+    list = data; setCache('pairs_list', list)
   }
   const ticker = symbol.replace('/USDT', '').toLowerCase()
   const coin = list.find((c: any) => c.symbol.toLowerCase() === ticker)
@@ -65,14 +63,14 @@ function calcEMA(closes: number[], period: number): number {
   const k = 2/(period+1)
   let ema = closes[0]
   for (let i=1; i<closes.length; i++) ema = closes[i]*k+ema*(1-k)
-  return parseFloat(ema.toFixed(2))
+  return parseFloat(ema.toFixed(6))
 }
 
 function calcBollinger(closes: number[], period = 20) {
   const slice = closes.slice(-period)
   const sma = slice.reduce((a,b)=>a+b,0)/slice.length
   const std = Math.sqrt(slice.reduce((s,v)=>s+Math.pow(v-sma,2),0)/period)
-  return { upper:parseFloat((sma+2*std).toFixed(2)), middle:parseFloat(sma.toFixed(2)), lower:parseFloat((sma-2*std).toFixed(2)) }
+  return { upper:parseFloat((sma+2*std).toFixed(6)), middle:parseFloat(sma.toFixed(6)), lower:parseFloat((sma-2*std).toFixed(6)) }
 }
 
 function calcVolumeScore(candles: any[]): number {
@@ -81,7 +79,47 @@ function calcVolumeScore(candles: any[]): number {
   return parseFloat(((vols[vols.length-1]/avg)*100).toFixed(0))
 }
 
-function buildSignal(pair: string, rsi: number, macd: number, volume: number, price: number, bollinger: any, ema7: number, ema21: number, ema50: number, fearGreed: any) {
+function calcTradeSetup(signal: string, price: number, bollinger: any, atr: number) {
+  const fmt = (n: number) => parseFloat(n.toFixed(6))
+
+  if (signal === 'LONG') {
+    const entry = fmt(price)
+    const stopLoss = fmt(Math.min(bollinger.lower * 0.99, price - atr * 1.5))
+    const risk = entry - stopLoss
+    return {
+      entry,
+      stopLoss,
+      tp1: fmt(entry + risk * 3), // 3:1
+      tp2: fmt(entry + risk * 5), // 5:1
+      risk: fmt(risk),
+      riskPct: parseFloat(((risk/entry)*100).toFixed(2))
+    }
+  } else if (signal === 'SHORT') {
+    const entry = fmt(price)
+    const stopLoss = fmt(Math.max(bollinger.upper * 1.01, price + atr * 1.5))
+    const risk = stopLoss - entry
+    return {
+      entry,
+      stopLoss,
+      tp1: fmt(entry - risk * 3), // 3:1
+      tp2: fmt(entry - risk * 5), // 5:1
+      risk: fmt(risk),
+      riskPct: parseFloat(((risk/entry)*100).toFixed(2))
+    }
+  }
+  return null
+}
+
+function calcATR(candles: any[], period = 14): number {
+  if (candles.length < 2) return 0
+  const trs = candles.slice(-period).map((c, i, arr) => {
+    if (i === 0) return 0
+    return Math.abs(c.close - arr[i-1].close)
+  }).filter(v => v > 0)
+  return trs.reduce((a,b)=>a+b,0)/trs.length
+}
+
+function buildSignal(pair: string, rsi: number, macd: number, volume: number, price: number, bollinger: any, ema7: number, ema21: number, ema50: number, fearGreed: any, atr: number) {
   const nearLower = price<=bollinger.lower*1.02
   const nearUpper = price>=bollinger.upper*0.98
   let bull=0, bear=0
@@ -103,7 +141,10 @@ function buildSignal(pair: string, rsi: number, macd: number, volume: number, pr
     signal='NEUTRO'; confidence=45+Math.abs(bull-bear)*3
     reasoning=[`RSI em ${rsi} — sem pressão direcional clara`,`EMA7: $${ema7.toLocaleString()} | EMA21: $${ema21.toLocaleString()} | EMA50: $${ema50.toLocaleString()}`,`Bollinger: upper $${bollinger.upper.toLocaleString()} / lower $${bollinger.lower.toLocaleString()}`,`Sentimento: ${fearGreed.label} (${fearGreed.value})`]
   }
-  return { pair, signal, confidence, price, indicators:{rsi,macd,volume}, bollinger, ema7, ema21, ema50, fearGreed, reasoning, creditsUsed:1, creditsRemaining:49, timestamp:new Date().toISOString() }
+
+  const tradeSetup = calcTradeSetup(signal, price, bollinger, atr)
+
+  return { pair, signal, confidence, price, indicators:{rsi,macd,volume}, bollinger, ema7, ema21, ema50, fearGreed, reasoning, tradeSetup, creditsUsed:1, creditsRemaining:49, timestamp:new Date().toISOString() }
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -120,6 +161,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const volume=calcVolumeScore(candles), price=closes[closes.length-1]
     const bollinger=calcBollinger(closes)
     const ema7=calcEMA(closes,7), ema21=calcEMA(closes,21), ema50=calcEMA(closes,Math.min(50,closes.length))
-    res.json(buildSignal(pair,rsi,macd,volume,price,bollinger,ema7,ema21,ema50,fearGreed))
+    const atr=calcATR(candles)
+    res.json(buildSignal(pair,rsi,macd,volume,price,bollinger,ema7,ema21,ema50,fearGreed,atr))
   } catch (err:any) { res.status(500).json({error:'Erro: '+err.message}) }
 }
