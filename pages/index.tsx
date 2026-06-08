@@ -28,9 +28,6 @@ const NETWORKS = [
   { id:'base', name:'Base', symbol:'ETH', color:'#3b82f6', icon:'🔵', explorer:'https://basescan.org/tx/' },
   { id:'bnb', name:'BNB Chain', symbol:'BNB', color:'#f0b90b', icon:'🟡', explorer:'https://bscscan.com/tx/' },
   { id:'polygon', name:'Polygon', symbol:'MATIC', color:'#8247e5', icon:'🟣', explorer:'https://polygonscan.com/tx/' },
-]  { id:'base', name:'Base', symbol:'ETH', color:'#3b82f6', icon:'🔵', explorer:'https://basescan.org/tx/' },
-  { id:'bnb', name:'BNB Chain', symbol:'BNB', color:'#f0b90b', icon:'🟡', explorer:'https://bscscan.com/tx/' },
-  { id:'polygon', name:'Polygon', symbol:'MATIC', color:'#8247e5', icon:'🟣', explorer:'https://polygonscan.com/tx/' },
 ]
 
 export default function Home() {
