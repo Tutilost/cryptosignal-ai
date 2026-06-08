@@ -1,9 +1,14 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Head from 'next/head'
 
-declare global { interface Window { ethereum?: any } }
+declare global {
+  interface Window {
+    ethereum?: any
+    solana?: any
+  }
+}
 
-type User = { address: string; credits: number }
+type User = { address: string; credits: number; walletType?: string }
 type PairInfo = { symbol: string; name: string; change24h: number }
 type Signal = {
   pair: string; signal: 'LONG' | 'SHORT' | 'NEUTRO'
@@ -13,7 +18,7 @@ type Signal = {
   ema7: number; ema21: number; ema50: number
   fearGreed: { value: number; label: string }
   stochRsi?: { k: number; d: number; signal: string; overbought: boolean; oversold: boolean }
-  tradeSetup?: { entry: number; stopLoss: number; tp1: number; tp2: number; risk: number; riskPct: number }
+  tradeSetup?: any
   reasoning: string[]
   creditsUsed: number; creditsRemaining: number; timestamp: string
 }
@@ -29,6 +34,16 @@ const NETWORKS = [
   { id:'bnb', name:'BNB Chain', symbol:'BNB', color:'#f0b90b', icon:'🟡', explorer:'https://bscscan.com/tx/' },
   { id:'polygon', name:'Polygon', symbol:'MATIC', color:'#8247e5', icon:'🟣', explorer:'https://polygonscan.com/tx/' },
 ]
+const WALLETS = [
+  { id:'metamask', name:'MetaMask', icon:'🦊', desc:'A mais popular', detect: () => typeof window !== 'undefined' && !!(window.ethereum?.isMetaMask), install:'https://metamask.io' },
+  { id:'okx', name:'OKX Wallet', icon:'⬛', desc:'Popular entre traders', detect: () => typeof window !== 'undefined' && !!(window.ethereum?.isOKExWallet), install:'https://okx.com/web3' },
+  { id:'rabby', name:'Rabby', icon:'🐰', desc:'Focada em segurança', detect: () => typeof window !== 'undefined' && !!(window.ethereum?.isRabby), install:'https://rabby.io' },
+  { id:'coinbase', name:'Coinbase Wallet', icon:'🔵', desc:'Fácil para iniciantes', detect: () => typeof window !== 'undefined' && !!(window.ethereum?.isCoinbaseWallet), install:'https://wallet.coinbase.com' },
+  { id:'trust', name:'Trust Wallet', icon:'🛡️', desc:'Mobile + extensão', detect: () => typeof window !== 'undefined' && !!(window.ethereum?.isTrust), install:'https://trustwallet.com' },
+  { id:'injected', name:'Outra carteira EVM', icon:'💼', desc:'Qualquer carteira compatível', detect: () => typeof window !== 'undefined' && !!(window.ethereum), install:'' },
+]
+
+const SESSION_TIMEOUT = 30 * 60 * 1000 // 30 minutos
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null)
@@ -43,14 +58,6 @@ export default function Home() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [showShop, setShowShop] = useState(false)
   const [showWalletPicker, setShowWalletPicker] = useState(false)
-
-  const WALLETS = [
-    { id:"metamask", name:"MetaMask", icon:"🦊", detect: () => !!(window.ethereum?.isMetaMask), install:"https://metamask.io" },
-    { id:"okx", name:"OKX Wallet", icon:"⬛", detect: () => !!(window.ethereum?.isOKExWallet), install:"https://okx.com/web3" },
-    { id:"rabby", name:"Rabby", icon:"🐰", detect: () => !!(window.ethereum?.isRabby), install:"https://rabby.io" },
-    { id:"coinbase", name:"Coinbase Wallet", icon:"🔵", detect: () => !!(window.ethereum?.isCoinbaseWallet), install:"https://wallet.coinbase.com" },
-    { id:"injected", name:"Outra carteira EVM", icon:"💼", detect: () => !!(window.ethereum), install:"" },
-  ]
   const [buyStep, setBuyStep] = useState<'select'|'network'|'pay'>('select')
   const [selectedPkg, setSelectedPkg] = useState<any>(null)
   const [selectedNetwork, setSelectedNetwork] = useState<any>(null)
@@ -58,6 +65,38 @@ export default function Home() {
   const [confirming, setConfirming] = useState(false)
   const [payError, setPayError] = useState('')
   const [paySuccess, setPaySuccess] = useState(false)
+  const lastActivity = useRef(Date.now())
+  const sessionTimer = useRef<any>(null)
+
+  // Sessão com timeout
+  const resetTimer = useCallback(() => {
+    lastActivity.current = Date.now()
+    if (sessionTimer.current) clearTimeout(sessionTimer.current)
+    sessionTimer.current = setTimeout(async () => {
+      await fetch('/api/auth/logout')
+      setUser(null)
+      setSignals([])
+    }, SESSION_TIMEOUT)
+  }, [])
+
+  // Desconecta ao fechar a janela/aba
+  useEffect(() => {
+    const handleUnload = () => { fetch('/api/auth/logout', { keepalive: true }) }
+    window.addEventListener('beforeunload', handleUnload)
+    return () => window.removeEventListener('beforeunload', handleUnload)
+  }, [])
+
+  // Rastreia atividade
+  useEffect(() => {
+    if (!user) return
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart']
+    events.forEach(e => window.addEventListener(e, resetTimer))
+    resetTimer()
+    return () => {
+      events.forEach(e => window.removeEventListener(e, resetTimer))
+      if (sessionTimer.current) clearTimeout(sessionTimer.current)
+    }
+  }, [user, resetTimer])
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.ok ? r.json() : null)
@@ -76,27 +115,10 @@ export default function Home() {
   const selectPair = (symbol: string) => { setSelectedPair(symbol); setSearch(''); setShowDropdown(false) }
 
   const connectWithWallet = useCallback(async (walletId: string) => {
-    setError(""); setConnecting(true); setShowWalletPicker(false)
+    setError(''); setConnecting(true); setShowWalletPicker(false)
     try {
       const provider = window.ethereum
-      if (!provider) throw new Error("Carteira nao encontrada.")
-      const accounts: string[] = await provider.request({ method: "eth_requestAccounts" })
-      const address = accounts[0]
-      const { nonce } = await fetch("/api/auth/nonce", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address }) }).then(r => r.json())
-      const message = `Entrar no CryptoSignal AI\n\nEndereco: ${address}\nNonce: ${nonce}\nEssa acao nao move fundos.`
-      const signature = await provider.request({ method: "personal_sign", params: [message, address] })
-      const data = await fetch("/api/auth/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, signature, address }) }).then(r => r.json())
-      if (data.error) throw new Error(data.error)
-      setUser({ address: data.address, credits: data.credits })
-    } catch (err: any) { setError(err.message || "Erro ao conectar") }
-    finally { setConnecting(false) }
-  }, [])
-
-  const connectWallet = useCallback(async () => {
-    setError(''); setConnecting(true)
-    try {
-      const provider = window.ethereum
-      if (!provider) throw new Error('Nenhuma carteira encontrada.')
+      if (!provider) throw new Error('Carteira não encontrada. Instale a extensão e recarregue a página.')
       const accounts: string[] = await provider.request({ method: 'eth_requestAccounts' })
       const address = accounts[0]
       const { nonce } = await fetch('/api/auth/nonce', {
@@ -110,13 +132,15 @@ export default function Home() {
         body: JSON.stringify({ message, signature, address })
       }).then(r => r.json())
       if (data.error) throw new Error(data.error)
-      setUser({ address: data.address, credits: data.credits })
+      setUser({ address: data.address, credits: data.credits, walletType: walletId })
     } catch (err: any) { setError(err.message || 'Erro ao conectar') }
     finally { setConnecting(false) }
   }, [])
 
   const logout = useCallback(async () => {
-    await fetch('/api/auth/logout'); setUser(null); setSignals([])
+    await fetch('/api/auth/logout')
+    setUser(null); setSignals([])
+    if (sessionTimer.current) clearTimeout(sessionTimer.current)
   }, [])
 
   const generateSignal = useCallback(async () => {
@@ -174,8 +198,8 @@ export default function Home() {
                   <span style={S.credLbl}>créditos</span>
                   <span style={{fontSize:13,color:'#a78bfa',marginLeft:2}}>+</span>
                 </div>
+                <a href="/performance" style={{fontSize:12,color:'#8080a0',textDecoration:'none',padding:'5px 12px',border:'1px solid #1e1e30',borderRadius:8}}>📊</a>
                 <div style={S.addr}>{short(user.address)}</div>
-                <a href="/performance" style={{fontSize:12,color:'#8080a0',textDecoration:'none',padding:'5px 12px',border:'1px solid #1e1e30',borderRadius:8}}>📊 performance</a>
                 <button onClick={logout} style={S.logoutBtn}>sair</button>
               </div>
             )}
@@ -190,48 +214,16 @@ export default function Home() {
                 <h1 style={S.loginTitle}>CryptoSignal AI</h1>
                 <p style={S.loginSub}>Sinais profissionais gerados por IA.<br/>Acesso via carteira — sem senha.</p>
                 <div style={S.features}>
-                  {['Assinatura não move fundos','Chave privada fica na sua carteira','Sessão segura de 24h','50 créditos grátis ao entrar'].map(f=>(
+                  {['Assinatura não move fundos','Chave privada fica na sua carteira','Sessão de 30 min com auto-logout','50 créditos grátis ao entrar'].map(f=>(
                     <div key={f} style={S.feat}><span style={{color:'#a78bfa',fontWeight:700}}>✓</span><span style={{color:'#c4c4d4'}}>{f}</span></div>
                   ))}
                 </div>
                 {error && <div style={S.errBox}>{error}</div>}
-                <button onClick={connectWallet} disabled={connecting} style={{...S.connectBtn,opacity:connecting?0.7:1}}>
+                <button onClick={()=>setShowWalletPicker(true)} disabled={connecting}
+                  style={{...S.connectBtn,opacity:connecting?0.7:1}}>
                   {connecting?'Aguardando carteira...':'◈ Conectar Carteira'}
                 </button>
-                <p style={{fontSize:12,color:'#6060a0',marginTop:12}}>MetaMask · OKX · Rabby · Coinbase · e mais</p>
-
-                {showWalletPicker&&(
-                  <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}
-                    onClick={()=>setShowWalletPicker(false)}>
-                    <div style={{background:'#0a0a14',border:'1px solid #1a1a28',borderRadius:16,padding:24,maxWidth:360,width:'100%'}}
-                      onClick={e=>e.stopPropagation()}>
-                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-                        <h3 style={{fontFamily:'monospace',fontSize:15,color:'#e2e2f0'}}>Escolha sua carteira</h3>
-                        <button onClick={()=>setShowWalletPicker(false)} style={{background:'none',border:'none',color:'#6060a0',cursor:'pointer',fontSize:18}}>✕</button>
-                      </div>
-                      <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                        {WALLETS.map(w=>{
-                          const detected = w.detect()
-                          return (
-                            <div key={w.id}
-                              onClick={()=> detected ? connectWithWallet(w.id) : window.open(w.install,'_blank')}
-                              style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',background:'#0f0f1a',border:`1px solid ${detected?'#2d2050':'#1e1e30'}`,borderRadius:10,cursor:'pointer'}}>
-                              <span style={{fontSize:24}}>{w.icon}</span>
-                              <div style={{flex:1}}>
-                                <div style={{fontSize:14,fontWeight:500,color:'#e2e2f0'}}>{w.name}</div>
-                                <div style={{fontSize:11,color: detected?'#4ade80':'#6060a0'}}>{detected?'Detectada — clique para conectar':'Não instalada — clique para instalar'}</div>
-                              </div>
-                              {detected&&<span style={{fontSize:10,color:'#a78bfa',background:'#1a1428',padding:'2px 8px',borderRadius:99,border:'1px solid #2d2050'}}>conectar</span>}
-                            </div>
-                          )
-                        })}
-                      </div>
-                      <div style={{marginTop:16,padding:'12px 14px',background:'#0f0f1a',border:'1px solid #1e1e30',borderRadius:10,fontSize:12,color:'#6060a0',textAlign:'center',lineHeight:1.6}}>
-                        🔜 Solana (Phantom, Backpack) em breve
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <p style={{fontSize:12,color:'#6060a0',marginTop:12}}>MetaMask · OKX · Rabby · Coinbase · Trust · e mais</p>
               </div>
             </div>
           ) : (
@@ -250,7 +242,7 @@ export default function Home() {
                       <input type="text" placeholder="🔍  Buscar par ou moeda..."
                         value={search} onChange={e=>{setSearch(e.target.value);setShowDropdown(true)}}
                         onFocus={()=>setShowDropdown(true)} style={S.searchInput}/>
-                      {search && <button onClick={()=>{setSearch('');setShowDropdown(false)}}
+                      {search&&<button onClick={()=>{setSearch('');setShowDropdown(false)}}
                         style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'#6060a0',cursor:'pointer',fontSize:14}}>✕</button>}
                     </div>
                     <button onClick={generateSignal} disabled={generating||user.credits<1}
@@ -258,7 +250,7 @@ export default function Home() {
                       {generating?'Analisando...':'▶ Gerar'}
                     </button>
                   </div>
-                  {showDropdown && filteredPairs.length>0 && (
+                  {showDropdown&&filteredPairs.length>0&&(
                     <div style={S.dropdown}>
                       {filteredPairs.slice(0,20).map(p=>(
                         <div key={p.symbol} onClick={()=>selectPair(p.symbol)}
@@ -285,7 +277,6 @@ export default function Home() {
                 </div>
               ):signals.map((sig,i)=>(
                 <div key={i} style={{...S.sigCard,borderLeft:`3px solid ${col(sig.signal)}`}}>
-                  {/* Header */}
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}}>
                     <div style={{display:'flex',alignItems:'center',gap:10}}>
                       <span style={{fontFamily:'monospace',fontSize:16,fontWeight:700,color:'#e2e2f0'}}>{sig.pair}</span>
@@ -300,10 +291,8 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Preço */}
                   <div style={{fontFamily:'monospace',fontSize:14,color:'#a78bfa',marginBottom:14,fontWeight:500}}>${fmt(sig.price)}</div>
 
-                  {/* Indicadores */}
                   <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:10}}>
                     {[
                       ['RSI',sig.indicators.rsi,sig.indicators.rsi<35?'#4ade80':sig.indicators.rsi>65?'#f87171':'#c4c4d4'],
@@ -320,7 +309,6 @@ export default function Home() {
                     ))}
                   </div>
 
-                  {/* Bollinger */}
                   <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:10}}>
                     {[
                       ['BB Superior','$'+sig.bollinger?.upper?.toLocaleString(),'#f87171'],
@@ -334,7 +322,6 @@ export default function Home() {
                     ))}
                   </div>
 
-                  {/* StochRSI */}
                   {sig.stochRsi&&(
                     <div style={{background:'#0f0f1a',border:'0.5px solid #1e1e30',borderRadius:6,padding:'10px 12px',marginBottom:10}}>
                       <div style={{display:'flex',alignItems:'center',marginBottom:8}}>
@@ -366,7 +353,6 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* Fear & Greed */}
                   {sig.fearGreed&&(
                     <div style={{background:'#0f0f1a',border:'0.5px solid #1e1e30',borderRadius:6,padding:'10px 12px',marginBottom:10}}>
                       <div style={{display:'flex',alignItems:'center',marginBottom:6}}>
@@ -379,37 +365,39 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* Trade Setup */}
                   {sig.tradeSetup&&(
                     <div style={{background:'#0f0f1a',border:`1px solid ${col(sig.signal)}33`,borderRadius:8,padding:'12px 14px',marginBottom:10}}>
                       <div style={{fontSize:11,color:'#8080a0',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:10,fontWeight:600}}>📊 Trade Setup</div>
                       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
                         <div style={{background:'#141424',borderRadius:6,padding:'8px 12px',border:'0.5px solid #1e1e30'}}>
                           <div style={{fontSize:10,color:'#8080a0',marginBottom:3}}>ENTRADA</div>
-                          <div style={{fontFamily:'monospace',fontSize:13,color:'#e2e2f0',fontWeight:600}}>${fmt((sig.tradeSetup as any).entry)}</div>
+                          <div style={{fontFamily:'monospace',fontSize:13,color:'#e2e2f0',fontWeight:600}}>${fmt(sig.tradeSetup.entry)}</div>
                         </div>
                         <div style={{background:'#1a0808',borderRadius:6,padding:'8px 12px',border:'0.5px solid #3d1010'}}>
                           <div style={{fontSize:10,color:'#f87171',marginBottom:3}}>STOP LOSS</div>
-                          <div style={{fontFamily:'monospace',fontSize:13,color:'#f87171',fontWeight:600}}>${fmt((sig.tradeSetup as any).stopLoss)}</div>
-                          <div style={{fontSize:10,color:'#6060a0',marginTop:2}}>Risco: {(sig.tradeSetup as any).riskPct}%</div>
+                          <div style={{fontFamily:'monospace',fontSize:13,color:'#f87171',fontWeight:600}}>${fmt(sig.tradeSetup.stopLoss)}</div>
+                          <div style={{fontSize:10,color:'#6060a0',marginTop:2}}>Risco: {sig.tradeSetup.riskPct}%</div>
                         </div>
                       </div>
-                      <div style={{fontSize:11,color:'#8080a0',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}}>Alvos por perfil de risco</div>
-                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                        {Object.values((sig.tradeSetup as any).targets || {}).map((t: any) => (
-                          <div key={t.ratio} style={{background:`${t.color}08`,borderRadius:6,padding:'8px 12px',border:`0.5px solid ${t.color}33`}}>
-                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
-                              <div style={{fontSize:10,color:t.color,fontWeight:600}}>{t.label}</div>
-                              <div style={{fontSize:10,color:t.color,fontFamily:'monospace',background:`${t.color}22`,padding:'1px 6px',borderRadius:99}}>{t.ratio}</div>
-                            </div>
-                            <div style={{fontFamily:'monospace',fontSize:13,color:t.color,fontWeight:700}}>${fmt(t.tp)}</div>
+                      {sig.tradeSetup.targets&&(
+                        <>
+                          <div style={{fontSize:11,color:'#8080a0',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}}>Alvos por perfil de risco</div>
+                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                            {Object.values(sig.tradeSetup.targets).map((t: any)=>(
+                              <div key={t.ratio} style={{background:`${t.color}08`,borderRadius:6,padding:'8px 12px',border:`0.5px solid ${t.color}33`}}>
+                                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
+                                  <div style={{fontSize:10,color:t.color,fontWeight:600}}>{t.label}</div>
+                                  <div style={{fontSize:10,color:t.color,fontFamily:'monospace',background:`${t.color}22`,padding:'1px 6px',borderRadius:99}}>{t.ratio}</div>
+                                </div>
+                                <div style={{fontFamily:'monospace',fontSize:13,color:t.color,fontWeight:700}}>${fmt(t.tp)}</div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        </>
+                      )}
                     </div>
                   )}
 
-                  {/* Reasoning */}
                   <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:12}}>
                     {sig.reasoning.map((r,j)=>(
                       <div key={j} style={{display:'flex',gap:8,fontSize:13,color:'#b0b0c4',lineHeight:1.5}}>
@@ -428,7 +416,42 @@ export default function Home() {
           )}
         </main>
 
-        {/* Modal de compra */}
+        {/* Wallet Picker Modal */}
+        {showWalletPicker&&(
+          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}
+            onClick={()=>setShowWalletPicker(false)}>
+            <div style={{background:'#0a0a14',border:'1px solid #1a1a28',borderRadius:16,padding:24,maxWidth:380,width:'100%'}}
+              onClick={e=>e.stopPropagation()}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+                <h3 style={{fontFamily:'monospace',fontSize:15,color:'#e2e2f0'}}>Escolha sua carteira</h3>
+                <button onClick={()=>setShowWalletPicker(false)} style={{background:'none',border:'none',color:'#6060a0',cursor:'pointer',fontSize:18}}>✕</button>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:12}}>
+                {WALLETS.map(w=>{
+                  const detected = w.detect()
+                  return (
+                    <div key={w.id}
+                      onClick={()=> detected ? connectWithWallet(w.id) : (w.install ? window.open(w.install,'_blank') : null)}
+                      style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',background:'#0f0f1a',border:`1px solid ${detected?'#2d2050':'#1e1e30'}`,borderRadius:10,cursor:'pointer',opacity:(!detected&&!w.install)?0.4:1}}>
+                      <span style={{fontSize:22,flexShrink:0}}>{w.icon}</span>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:14,fontWeight:500,color:'#e2e2f0'}}>{w.name}</div>
+                        <div style={{fontSize:11,color:detected?'#4ade80':'#6060a0',marginTop:1}}>{detected?'✓ Detectada — clique para conectar':w.install?'Não instalada — clique para instalar':'Não disponível'}</div>
+                      </div>
+                      {detected&&<span style={{fontSize:10,color:'#a78bfa',background:'#1a1428',padding:'2px 8px',borderRadius:99,border:'1px solid #2d2050',whiteSpace:'nowrap'}}>conectar</span>}
+                      {!detected&&w.install&&<span style={{fontSize:10,color:'#6060a0',whiteSpace:'nowrap'}}>instalar →</span>}
+                    </div>
+                  )
+                })}
+              </div>
+              <div style={{padding:'12px 14px',background:'#0f0f1a',border:'1px solid #1e1e30',borderRadius:10,fontSize:12,color:'#6060a0',textAlign:'center',lineHeight:1.6}}>
+                🔜 Solana (Phantom, Backpack) em breve
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Shop Modal */}
         {showShop&&user&&(
           <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}
             onClick={()=>setShowShop(false)}>
@@ -438,7 +461,6 @@ export default function Home() {
                 <h2 style={{fontFamily:'monospace',fontSize:16,color:'#e2e2f0'}}>◆ Comprar Créditos</h2>
                 <button onClick={()=>setShowShop(false)} style={{background:'none',border:'none',color:'#6060a0',cursor:'pointer',fontSize:18}}>✕</button>
               </div>
-
               {paySuccess?(
                 <div style={{textAlign:'center',padding:'24px 0'}}>
                   <div style={{fontSize:40,marginBottom:12}}>✅</div>
@@ -447,7 +469,7 @@ export default function Home() {
                 </div>
               ):buyStep==='select'?(
                 <>
-                  <p style={{fontSize:13,color:'#8080a0',marginBottom:16}}>Aceita USDC e USDT em múltiplas redes.</p>
+                  <p style={{fontSize:13,color:'#8080a0',marginBottom:16}}>USDC ou USDT — Base, BNB Chain ou Polygon.</p>
                   <div style={{display:'flex',flexDirection:'column',gap:10}}>
                     {PACKAGES.map(pkg=>(
                       <div key={pkg.id} onClick={()=>{setSelectedPkg(pkg);setBuyStep('network')}}
@@ -469,8 +491,8 @@ export default function Home() {
               ):buyStep==='network'?(
                 <>
                   <button onClick={()=>setBuyStep('select')} style={{background:'none',border:'none',color:'#8080a0',cursor:'pointer',fontSize:13,marginBottom:16}}>← Voltar</button>
-                  <p style={{fontSize:13,color:'#e2e2f0',marginBottom:6,fontWeight:600}}>Escolha a rede de pagamento:</p>
-                  <p style={{fontSize:12,color:'#8080a0',marginBottom:16}}>O mesmo endereço funciona nas 3 redes. Escolha a que você já usa.</p>
+                  <p style={{fontSize:13,color:'#e2e2f0',marginBottom:6,fontWeight:600}}>Escolha a rede:</p>
+                  <p style={{fontSize:12,color:'#8080a0',marginBottom:16}}>O mesmo endereço funciona nas 3 redes.</p>
                   <div style={{display:'flex',flexDirection:'column',gap:10}}>
                     {NETWORKS.map(net=>(
                       <div key={net.id} onClick={()=>{setSelectedNetwork(net);setBuyStep('pay')}}
@@ -488,32 +510,22 @@ export default function Home() {
               ):(
                 <>
                   <button onClick={()=>setBuyStep('network')} style={{background:'none',border:'none',color:'#8080a0',cursor:'pointer',fontSize:13,marginBottom:16}}>← Voltar</button>
-
                   <div style={{background:'#0f0f1a',border:'1px solid #1e1e30',borderRadius:10,padding:16,marginBottom:14}}>
                     <div style={{fontSize:12,color:'#8080a0',marginBottom:6}}>Envie exatamente:</div>
                     <div style={{fontFamily:'monospace',fontSize:22,fontWeight:700,color:'#a78bfa'}}>${selectedPkg?.priceUSD} USDC ou USDT</div>
                     <div style={{fontSize:12,color:'#8080a0',marginTop:4}}>= {selectedPkg?.credits} créditos</div>
                   </div>
-
-                  {/* Aviso de rede */}
                   <div style={{background:`${selectedNetwork?.color}11`,border:`2px solid ${selectedNetwork?.color}`,borderRadius:10,padding:'12px 14px',marginBottom:14,display:'flex',gap:10,alignItems:'flex-start'}}>
                     <span style={{fontSize:20,flexShrink:0}}>⚠️</span>
                     <div>
-                      <div style={{color:selectedNetwork?.color,fontWeight:700,fontSize:13,marginBottom:4}}>
-                        Envie SOMENTE pela {selectedNetwork?.name}
-                      </div>
-                      <div style={{color:'#c4c4d4',fontSize:12,lineHeight:1.5}}>
-                        NÃO use outra rede. Fundos enviados pela rede errada são <strong style={{color:'#f87171'}}>irrecuperáveis</strong>.
-                      </div>
+                      <div style={{color:selectedNetwork?.color,fontWeight:700,fontSize:13,marginBottom:4}}>Envie SOMENTE pela {selectedNetwork?.name}</div>
+                      <div style={{color:'#c4c4d4',fontSize:12,lineHeight:1.5}}>Fundos enviados pela rede errada são <strong style={{color:'#f87171'}}>irrecuperáveis</strong>.</div>
                     </div>
                   </div>
-
                   <div style={{background:'#0f0f1a',border:'1px solid #1e1e30',borderRadius:10,padding:16,marginBottom:14}}>
                     <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
-                      <span style={{fontSize:12,color:'#8080a0'}}>Endereço de recebimento</span>
-                      <span style={{fontSize:10,background:`${selectedNetwork?.color}22`,color:selectedNetwork?.color,padding:'2px 8px',borderRadius:99,border:`1px solid ${selectedNetwork?.color}44`,fontWeight:600}}>
-                        {selectedNetwork?.icon} {selectedNetwork?.name}
-                      </span>
+                      <span style={{fontSize:12,color:'#8080a0'}}>Endereço</span>
+                      <span style={{fontSize:10,background:`${selectedNetwork?.color}22`,color:selectedNetwork?.color,padding:'2px 8px',borderRadius:99,fontWeight:600}}>{selectedNetwork?.icon} {selectedNetwork?.name}</span>
                     </div>
                     <div style={{fontFamily:'monospace',fontSize:11,color:'#e2e2f0',wordBreak:'break-all',background:'#141424',padding:'8px 10px',borderRadius:6}}>{RECEIVE}</div>
                     <button onClick={()=>navigator.clipboard.writeText(RECEIVE)}
@@ -521,11 +533,7 @@ export default function Home() {
                       📋 Copiar endereço
                     </button>
                   </div>
-
-                  <div style={{fontSize:12,color:'#8080a0',marginBottom:4}}>Cole o hash da transação após enviar:</div>
-                  <div style={{fontSize:11,color:'#6060a0',marginBottom:8}}>
-                    Encontre em: <a href={selectedNetwork?.explorer} target="_blank" rel="noreferrer" style={{color:'#a78bfa'}}>{selectedNetwork?.explorer}...</a>
-                  </div>
+                  <div style={{fontSize:12,color:'#8080a0',marginBottom:8}}>Cole o hash da transação:</div>
                   <input type="text" placeholder="0x..."
                     value={txHash} onChange={e=>setTxHash(e.target.value)}
                     style={{width:'100%',background:'#0f0f1a',border:'1px solid #1e1e30',color:'#e2e2f0',padding:'10px 14px',borderRadius:8,fontSize:13,fontFamily:'monospace',outline:'none',marginBottom:12}}/>
@@ -534,7 +542,7 @@ export default function Home() {
                     style={{width:'100%',padding:'12px',background:'linear-gradient(135deg,#7c3aed,#a78bfa)',color:'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:'monospace',opacity:(!txHash||confirming)?0.5:1}}>
                     {confirming?'Verificando...':'✓ Confirmar Pagamento'}
                   </button>
-                  <p style={{fontSize:11,color:'#404060',marginTop:10,textAlign:'center'}}>Créditos adicionados automaticamente após confirmação</p>
+                  <p style={{fontSize:11,color:'#404060',marginTop:10,textAlign:'center'}}>Créditos adicionados após confirmação on-chain</p>
                 </>
               )}
             </div>
