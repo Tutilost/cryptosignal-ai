@@ -172,7 +172,40 @@ export default function Home() {
                 <button onClick={connectWallet} disabled={connecting} style={{...S.connectBtn,opacity:connecting?0.7:1}}>
                   {connecting?'Aguardando carteira...':'◈ Conectar Carteira'}
                 </button>
-                <p style={{fontSize:12,color:'#6060a0',marginTop:12}}>Funciona com MetaMask, OKX Wallet e WalletConnect</p>
+                <p style={{fontSize:12,color:'#6060a0',marginTop:12}}>MetaMask · OKX · Rabby · Coinbase · e mais</p>
+
+                {showWalletPicker&&(
+                  <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}
+                    onClick={()=>setShowWalletPicker(false)}>
+                    <div style={{background:'#0a0a14',border:'1px solid #1a1a28',borderRadius:16,padding:24,maxWidth:360,width:'100%'}}
+                      onClick={e=>e.stopPropagation()}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+                        <h3 style={{fontFamily:'monospace',fontSize:15,color:'#e2e2f0'}}>Escolha sua carteira</h3>
+                        <button onClick={()=>setShowWalletPicker(false)} style={{background:'none',border:'none',color:'#6060a0',cursor:'pointer',fontSize:18}}>✕</button>
+                      </div>
+                      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                        {WALLETS.map(w=>{
+                          const detected = w.detect()
+                          return (
+                            <div key={w.id}
+                              onClick={()=> detected ? connectWithWallet(w.id) : window.open(w.install,'_blank')}
+                              style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',background:'#0f0f1a',border:`1px solid ${detected?'#2d2050':'#1e1e30'}`,borderRadius:10,cursor:'pointer'}}>
+                              <span style={{fontSize:24}}>{w.icon}</span>
+                              <div style={{flex:1}}>
+                                <div style={{fontSize:14,fontWeight:500,color:'#e2e2f0'}}>{w.name}</div>
+                                <div style={{fontSize:11,color: detected?'#4ade80':'#6060a0'}}>{detected?'Detectada — clique para conectar':'Não instalada — clique para instalar'}</div>
+                              </div>
+                              {detected&&<span style={{fontSize:10,color:'#a78bfa',background:'#1a1428',padding:'2px 8px',borderRadius:99,border:'1px solid #2d2050'}}>conectar</span>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <div style={{marginTop:16,padding:'12px 14px',background:'#0f0f1a',border:'1px solid #1e1e30',borderRadius:10,fontSize:12,color:'#6060a0',textAlign:'center',lineHeight:1.6}}>
+                        🔜 Solana (Phantom, Backpack) em breve
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
