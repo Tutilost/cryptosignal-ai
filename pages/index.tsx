@@ -406,8 +406,22 @@ export default function Home() {
                     <div style={{fontFamily:'monospace',fontSize:22,fontWeight:700,color:'#a78bfa'}}>${selectedPkg?.priceUSD} USDC ou USDT</div>
                     <div style={{fontSize:12,color:'#8080a0',marginTop:4}}>= {selectedPkg?.credits} créditos</div>
                   </div>
+                  {/* Aviso de rede */}
+                  <div style={{background:'#1a0d00',border:'2px solid #f97316',borderRadius:10,padding:'12px 14px',marginBottom:14,display:'flex',gap:10,alignItems:'flex-start'}}>
+                    <span style={{fontSize:20,flexShrink:0}}>⚠️</span>
+                    <div>
+                      <div style={{color:'#f97316',fontWeight:700,fontSize:13,marginBottom:4}}>ATENÇÃO — Envie SOMENTE na rede Base</div>
+                      <div style={{color:'#c4a882',fontSize:12,lineHeight:1.5}}>
+                        NÃO envie pela Ethereum, BNB Chain, Polygon ou qualquer outra rede. Fundos enviados pela rede errada são <strong style={{color:'#f87171'}}>irrecuperáveis</strong>.
+                      </div>
+                    </div>
+                  </div>
+
                   <div style={{background:'#0f0f1a',border:'1px solid #1e1e30',borderRadius:10,padding:16,marginBottom:14}}>
-                    <div style={{fontSize:12,color:'#8080a0',marginBottom:6}}>Endereço (rede Base):</div>
+                    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+                      <span style={{fontSize:12,color:'#8080a0'}}>Endereço de recebimento</span>
+                      <span style={{fontSize:10,background:'#1a1428',color:'#a78bfa',padding:'2px 8px',borderRadius:99,border:'1px solid #2d2050',fontWeight:600}}>rede Base</span>
+                    </div>
                     <div style={{fontFamily:'monospace',fontSize:11,color:'#e2e2f0',wordBreak:'break-all',background:'#141424',padding:'8px 10px',borderRadius:6}}>{RECEIVE}</div>
                     <button onClick={()=>navigator.clipboard.writeText(RECEIVE)}
                       style={{marginTop:8,background:'#1a1428',border:'1px solid #2d2050',color:'#a78bfa',fontSize:12,padding:'6px 12px',borderRadius:6,cursor:'pointer',width:'100%'}}>
