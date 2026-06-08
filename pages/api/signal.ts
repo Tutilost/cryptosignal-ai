@@ -193,7 +193,7 @@ function buildSignal(pair: string, rsi: number, macd: number, volume: number, pr
 
   const tradeSetup = calcTradeSetup(signal, price, bollinger, atr)
 
-  return { pair, signal, confidence, price, indicators:{rsi,macd,volume}, bollinger, ema7, ema21, ema50, fearGreed, reasoning, tradeSetup, creditsUsed:1, creditsRemaining:49, timestamp:new Date().toISOString() }
+  return { pair, signal, confidence, price, indicators:{rsi,macd,volume}, bollinger, ema7, ema21, ema50, fearGreed, stochRsi, reasoning, tradeSetup, creditsUsed:1, creditsRemaining:49, timestamp:new Date().toISOString() }
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -211,6 +211,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const bollinger=calcBollinger(closes)
     const ema7=calcEMA(closes,7), ema21=calcEMA(closes,21), ema50=calcEMA(closes,Math.min(50,closes.length))
     const atr=calcATR(candles)
-    res.json(buildSignal(pair,rsi,macd,volume,price,bollinger,ema7,ema21,ema50,fearGreed,atr))
+    const stochRsi=calcStochRSI(closes)
+    res.json(buildSignal(pair,rsi,macd,volume,price,bollinger,ema7,ema21,ema50,fearGreed,atr,stochRsi))
   } catch (err:any) { res.status(500).json({error:'Erro: '+err.message}) }
 }
