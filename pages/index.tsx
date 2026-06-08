@@ -43,6 +43,14 @@ export default function Home() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [showShop, setShowShop] = useState(false)
   const [showWalletPicker, setShowWalletPicker] = useState(false)
+
+  const WALLETS = [
+    { id:"metamask", name:"MetaMask", icon:"🦊", detect: () => !!(window.ethereum?.isMetaMask), install:"https://metamask.io" },
+    { id:"okx", name:"OKX Wallet", icon:"⬛", detect: () => !!(window.ethereum?.isOKExWallet), install:"https://okx.com/web3" },
+    { id:"rabby", name:"Rabby", icon:"🐰", detect: () => !!(window.ethereum?.isRabby), install:"https://rabby.io" },
+    { id:"coinbase", name:"Coinbase Wallet", icon:"🔵", detect: () => !!(window.ethereum?.isCoinbaseWallet), install:"https://wallet.coinbase.com" },
+    { id:"injected", name:"Outra carteira EVM", icon:"💼", detect: () => !!(window.ethereum), install:"" },
+  ]
   const [buyStep, setBuyStep] = useState<'select'|'network'|'pay'>('select')
   const [selectedPkg, setSelectedPkg] = useState<any>(null)
   const [selectedNetwork, setSelectedNetwork] = useState<any>(null)
