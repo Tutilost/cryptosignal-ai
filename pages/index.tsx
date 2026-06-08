@@ -37,8 +37,9 @@ export default function Home() {
   const [search, setSearch] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
   const [showShop, setShowShop] = useState(false)
-  const [buyStep, setBuyStep] = useState<'select'|'pay'>('select')
+  const [buyStep, setBuyStep] = useState<'select'|'network'|'pay'>('select')
   const [selectedPkg, setSelectedPkg] = useState<any>(null)
+  const [selectedNetwork, setSelectedNetwork] = useState<any>(null)
   const [txHash, setTxHash] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [payError, setPayError] = useState('')
@@ -113,7 +114,7 @@ export default function Home() {
       if (data.error) throw new Error(data.error)
       setUser(prev => prev ? { ...prev, credits: data.credits } : prev)
       setPaySuccess(true)
-      setTimeout(() => { setShowShop(false); setPaySuccess(false); setBuyStep('select'); setTxHash('') }, 3000)
+      setTimeout(() => { setShowShop(false); setPaySuccess(false); setBuyStep('select'); setTxHash(''); setSelectedNetwork(null) }, 3000)
     } catch (err: any) { setPayError(err.message) }
     finally { setConfirming(false) }
   }
@@ -379,10 +380,10 @@ export default function Home() {
                 </div>
               ):buyStep==='select'?(
                 <>
-                  <p style={{fontSize:13,color:'#8080a0',marginBottom:16}}>Aceita USDC e USDT na rede Base. Taxa ~$0.01.</p>
+                  <p style={{fontSize:13,color:'#8080a0',marginBottom:16}}>Aceita USDC e USDT em múltiplas redes.</p>
                   <div style={{display:'flex',flexDirection:'column',gap:10}}>
                     {PACKAGES.map(pkg=>(
-                      <div key={pkg.id} onClick={()=>{setSelectedPkg(pkg);setBuyStep('pay')}}
+                      <div key={pkg.id} onClick={()=>{setSelectedPkg(pkg);setBuyStep('network')}}
                         style={{background:'#0f0f1a',border:'1px solid #1e1e30',borderRadius:10,padding:'14px 16px',cursor:'pointer'}}>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                           <div>
@@ -398,21 +399,44 @@ export default function Home() {
                     ))}
                   </div>
                 </>
-              ):(
+              ):buyStep==='network'?(
                 <>
                   <button onClick={()=>setBuyStep('select')} style={{background:'none',border:'none',color:'#8080a0',cursor:'pointer',fontSize:13,marginBottom:16}}>← Voltar</button>
+                  <p style={{fontSize:13,color:'#e2e2f0',marginBottom:6,fontWeight:600}}>Escolha a rede de pagamento:</p>
+                  <p style={{fontSize:12,color:'#8080a0',marginBottom:16}}>O mesmo endereço funciona nas 3 redes. Escolha a que você já usa.</p>
+                  <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                    {NETWORKS.map(net=>(
+                      <div key={net.id} onClick={()=>{setSelectedNetwork(net);setBuyStep('pay')}}
+                        style={{background:'#0f0f1a',border:`1px solid ${net.color}44`,borderRadius:10,padding:'14px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:12}}>
+                        <span style={{fontSize:24}}>{net.icon}</span>
+                        <div style={{flex:1}}>
+                          <div style={{fontFamily:'monospace',fontSize:14,fontWeight:700,color:'#e2e2f0'}}>{net.name}</div>
+                          <div style={{fontSize:12,color:'#8080a0',marginTop:2}}>Taxa ~$0.01 — USDC ou USDT</div>
+                        </div>
+                        <span style={{fontSize:11,color:net.color,fontWeight:600,background:`${net.color}22`,padding:'3px 10px',borderRadius:99}}>{net.symbol}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ):(
+                <>
+                  <button onClick={()=>setBuyStep('network')} style={{background:'none',border:'none',color:'#8080a0',cursor:'pointer',fontSize:13,marginBottom:16}}>← Voltar</button>
+
                   <div style={{background:'#0f0f1a',border:'1px solid #1e1e30',borderRadius:10,padding:16,marginBottom:14}}>
                     <div style={{fontSize:12,color:'#8080a0',marginBottom:6}}>Envie exatamente:</div>
                     <div style={{fontFamily:'monospace',fontSize:22,fontWeight:700,color:'#a78bfa'}}>${selectedPkg?.priceUSD} USDC ou USDT</div>
                     <div style={{fontSize:12,color:'#8080a0',marginTop:4}}>= {selectedPkg?.credits} créditos</div>
                   </div>
+
                   {/* Aviso de rede */}
-                  <div style={{background:'#1a0d00',border:'2px solid #f97316',borderRadius:10,padding:'12px 14px',marginBottom:14,display:'flex',gap:10,alignItems:'flex-start'}}>
+                  <div style={{background:`${selectedNetwork?.color}11`,border:`2px solid ${selectedNetwork?.color}`,borderRadius:10,padding:'12px 14px',marginBottom:14,display:'flex',gap:10,alignItems:'flex-start'}}>
                     <span style={{fontSize:20,flexShrink:0}}>⚠️</span>
                     <div>
-                      <div style={{color:'#f97316',fontWeight:700,fontSize:13,marginBottom:4}}>ATENÇÃO — Envie SOMENTE na rede Base</div>
-                      <div style={{color:'#c4a882',fontSize:12,lineHeight:1.5}}>
-                        NÃO envie pela Ethereum, BNB Chain, Polygon ou qualquer outra rede. Fundos enviados pela rede errada são <strong style={{color:'#f87171'}}>irrecuperáveis</strong>.
+                      <div style={{color:selectedNetwork?.color,fontWeight:700,fontSize:13,marginBottom:4}}>
+                        Envie SOMENTE pela {selectedNetwork?.name}
+                      </div>
+                      <div style={{color:'#c4c4d4',fontSize:12,lineHeight:1.5}}>
+                        NÃO use outra rede. Fundos enviados pela rede errada são <strong style={{color:'#f87171'}}>irrecuperáveis</strong>.
                       </div>
                     </div>
                   </div>
@@ -420,7 +444,9 @@ export default function Home() {
                   <div style={{background:'#0f0f1a',border:'1px solid #1e1e30',borderRadius:10,padding:16,marginBottom:14}}>
                     <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
                       <span style={{fontSize:12,color:'#8080a0'}}>Endereço de recebimento</span>
-                      <span style={{fontSize:10,background:'#1a1428',color:'#a78bfa',padding:'2px 8px',borderRadius:99,border:'1px solid #2d2050',fontWeight:600}}>rede Base</span>
+                      <span style={{fontSize:10,background:`${selectedNetwork?.color}22`,color:selectedNetwork?.color,padding:'2px 8px',borderRadius:99,border:`1px solid ${selectedNetwork?.color}44`,fontWeight:600}}>
+                        {selectedNetwork?.icon} {selectedNetwork?.name}
+                      </span>
                     </div>
                     <div style={{fontFamily:'monospace',fontSize:11,color:'#e2e2f0',wordBreak:'break-all',background:'#141424',padding:'8px 10px',borderRadius:6}}>{RECEIVE}</div>
                     <button onClick={()=>navigator.clipboard.writeText(RECEIVE)}
@@ -428,7 +454,11 @@ export default function Home() {
                       📋 Copiar endereço
                     </button>
                   </div>
-                  <div style={{fontSize:12,color:'#8080a0',marginBottom:8}}>Cole o hash da transação após enviar:</div>
+
+                  <div style={{fontSize:12,color:'#8080a0',marginBottom:4}}>Cole o hash da transação após enviar:</div>
+                  <div style={{fontSize:11,color:'#6060a0',marginBottom:8}}>
+                    Encontre em: <a href={selectedNetwork?.explorer} target="_blank" rel="noreferrer" style={{color:'#a78bfa'}}>{selectedNetwork?.explorer}...</a>
+                  </div>
                   <input type="text" placeholder="0x..."
                     value={txHash} onChange={e=>setTxHash(e.target.value)}
                     style={{width:'100%',background:'#0f0f1a',border:'1px solid #1e1e30',color:'#e2e2f0',padding:'10px 14px',borderRadius:8,fontSize:13,fontFamily:'monospace',outline:'none',marginBottom:12}}/>
