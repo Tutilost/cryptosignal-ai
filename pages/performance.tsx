@@ -40,7 +40,7 @@ export default function Performance() {
     short: signals.filter(s => s.signal === 'SHORT').length,
     neutro: signals.filter(s => s.signal === 'NEUTRO').length,
     avgConf: signals.length ? Math.round(signals.reduce((a, s) => a + s.confidence, 0) / signals.length) : 0,
-    pairs: [...new Set(signals.map(s => s.pair))].length,
+    pairs: signals.map(s => s.pair).filter((v, i, a) => a.indexOf(v) === i).length,
   }
 
   const col = (s: string) => s==='LONG'?'#4ade80':s==='SHORT'?'#f87171':'#fbbf24'
