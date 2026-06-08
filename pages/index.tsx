@@ -75,6 +75,23 @@ export default function Home() {
 
   const selectPair = (symbol: string) => { setSelectedPair(symbol); setSearch(''); setShowDropdown(false) }
 
+  const connectWithWallet = useCallback(async (walletId: string) => {
+    setError(""); setConnecting(true); setShowWalletPicker(false)
+    try {
+      const provider = window.ethereum
+      if (!provider) throw new Error("Carteira nao encontrada.")
+      const accounts: string[] = await provider.request({ method: "eth_requestAccounts" })
+      const address = accounts[0]
+      const { nonce } = await fetch("/api/auth/nonce", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address }) }).then(r => r.json())
+      const message = `Entrar no CryptoSignal AI\n\nEndereco: ${address}\nNonce: ${nonce}\nEssa acao nao move fundos.`
+      const signature = await provider.request({ method: "personal_sign", params: [message, address] })
+      const data = await fetch("/api/auth/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, signature, address }) }).then(r => r.json())
+      if (data.error) throw new Error(data.error)
+      setUser({ address: data.address, credits: data.credits })
+    } catch (err: any) { setError(err.message || "Erro ao conectar") }
+    finally { setConnecting(false) }
+  }, [])
+
   const connectWallet = useCallback(async () => {
     setError(''); setConnecting(true)
     try {
