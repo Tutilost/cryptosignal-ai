@@ -42,6 +42,7 @@ export default function Home() {
   const [search, setSearch] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
   const [showShop, setShowShop] = useState(false)
+  const [showWalletPicker, setShowWalletPicker] = useState(false)
   const [buyStep, setBuyStep] = useState<'select'|'network'|'pay'>('select')
   const [selectedPkg, setSelectedPkg] = useState<any>(null)
   const [selectedNetwork, setSelectedNetwork] = useState<any>(null)
