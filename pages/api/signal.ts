@@ -89,10 +89,14 @@ function calcTradeSetup(signal: string, price: number, bollinger: any, atr: numb
     return {
       entry,
       stopLoss,
-      tp1: fmt(entry + risk * 3), // 3:1
-      tp2: fmt(entry + risk * 5), // 5:1
       risk: fmt(risk),
-      riskPct: parseFloat(((risk/entry)*100).toFixed(2))
+      riskPct: parseFloat(((risk/entry)*100).toFixed(2)),
+      targets: {
+        conservative: { ratio: '1:1', label: 'Conservador', tp: fmt(entry + risk * 1), color: '#4ade80' },
+        medium:       { ratio: '2:1', label: 'Médio Risco', tp: fmt(entry + risk * 2), color: '#facc15' },
+        high:         { ratio: '3:1', label: 'Alto Risco',  tp: fmt(entry + risk * 3), color: '#f97316' },
+        vhigh:        { ratio: '5:1', label: 'Alt. Risco',  tp: fmt(entry + risk * 5), color: '#f87171' },
+      }
     }
   } else if (signal === 'SHORT') {
     const entry = fmt(price)
@@ -101,10 +105,14 @@ function calcTradeSetup(signal: string, price: number, bollinger: any, atr: numb
     return {
       entry,
       stopLoss,
-      tp1: fmt(entry - risk * 3), // 3:1
-      tp2: fmt(entry - risk * 5), // 5:1
       risk: fmt(risk),
-      riskPct: parseFloat(((risk/entry)*100).toFixed(2))
+      riskPct: parseFloat(((risk/entry)*100).toFixed(2)),
+      targets: {
+        conservative: { ratio: '1:1', label: 'Conservador', tp: fmt(entry - risk * 1), color: '#4ade80' },
+        medium:       { ratio: '2:1', label: 'Médio Risco', tp: fmt(entry - risk * 2), color: '#facc15' },
+        high:         { ratio: '3:1', label: 'Alto Risco',  tp: fmt(entry - risk * 3), color: '#f97316' },
+        vhigh:        { ratio: '5:1', label: 'Alt. Risco',  tp: fmt(entry - risk * 5), color: '#f87171' },
+      }
     }
   }
   return null
@@ -212,6 +220,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const ema7=calcEMA(closes,7), ema21=calcEMA(closes,21), ema50=calcEMA(closes,Math.min(50,closes.length))
     const atr=calcATR(candles)
     const stochRsi=calcStochRSI(closes)
-    res.json(buildSignal(pair,rsi,macd,volume,price,bollinger,ema7,ema21,ema50,fearGreed,atr,stochRsi))
+    const result = buildSignal(pair,rsi,macd,volume,price,bollinger,ema7,ema21,ema50,fearGreed,atr,stochRsi)
+
+    // Salva sinal no Supabase
+    try {
+      const { createClient } = await import('@supabase/supabase-js')
+      const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!)
+      await sb.from('signals').insert({
+        address: payload.address.toLowerCase(),
+        pair, signal: result.signal,
+        confidence: result.confidence,
+        price: result.price,
+        analysis: result
+      })
+    } catch(e) { /* silently fail */ }
+
+    res.json(result)
   } catch (err:any) { res.status(500).json({error:'Erro: '+err.message}) }
 }

@@ -149,6 +149,7 @@ export default function Home() {
                   <span style={{fontSize:13,color:'#a78bfa',marginLeft:2}}>+</span>
                 </div>
                 <div style={S.addr}>{short(user.address)}</div>
+                <a href="/performance" style={{fontSize:12,color:'#8080a0',textDecoration:'none',padding:'5px 12px',border:'1px solid #1e1e30',borderRadius:8}}>📊 performance</a>
                 <button onClick={logout} style={S.logoutBtn}>sair</button>
               </div>
             )}
@@ -323,26 +324,28 @@ export default function Home() {
                   {sig.tradeSetup&&(
                     <div style={{background:'#0f0f1a',border:`1px solid ${col(sig.signal)}33`,borderRadius:8,padding:'12px 14px',marginBottom:10}}>
                       <div style={{fontSize:11,color:'#8080a0',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:10,fontWeight:600}}>📊 Trade Setup</div>
-                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
                         <div style={{background:'#141424',borderRadius:6,padding:'8px 12px',border:'0.5px solid #1e1e30'}}>
                           <div style={{fontSize:10,color:'#8080a0',marginBottom:3}}>ENTRADA</div>
-                          <div style={{fontFamily:'monospace',fontSize:13,color:'#e2e2f0',fontWeight:600}}>${fmt(sig.tradeSetup.entry)}</div>
+                          <div style={{fontFamily:'monospace',fontSize:13,color:'#e2e2f0',fontWeight:600}}>${fmt((sig.tradeSetup as any).entry)}</div>
                         </div>
                         <div style={{background:'#1a0808',borderRadius:6,padding:'8px 12px',border:'0.5px solid #3d1010'}}>
                           <div style={{fontSize:10,color:'#f87171',marginBottom:3}}>STOP LOSS</div>
-                          <div style={{fontFamily:'monospace',fontSize:13,color:'#f87171',fontWeight:600}}>${fmt(sig.tradeSetup.stopLoss)}</div>
-                          <div style={{fontSize:10,color:'#6060a0',marginTop:2}}>Risco: {sig.tradeSetup.riskPct}%</div>
+                          <div style={{fontFamily:'monospace',fontSize:13,color:'#f87171',fontWeight:600}}>${fmt((sig.tradeSetup as any).stopLoss)}</div>
+                          <div style={{fontSize:10,color:'#6060a0',marginTop:2}}>Risco: {(sig.tradeSetup as any).riskPct}%</div>
                         </div>
                       </div>
+                      <div style={{fontSize:11,color:'#8080a0',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}}>Alvos por perfil de risco</div>
                       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                        <div style={{background:'rgba(74,222,128,0.05)',borderRadius:6,padding:'8px 12px',border:'0.5px solid rgba(74,222,128,0.2)'}}>
-                          <div style={{fontSize:10,color:'#4ade80',marginBottom:3}}>ALVO 3:1 🎯</div>
-                          <div style={{fontFamily:'monospace',fontSize:13,color:'#4ade80',fontWeight:600}}>${fmt(sig.tradeSetup.tp1)}</div>
-                        </div>
-                        <div style={{background:'rgba(74,222,128,0.08)',borderRadius:6,padding:'8px 12px',border:'0.5px solid rgba(74,222,128,0.3)'}}>
-                          <div style={{fontSize:10,color:'#4ade80',marginBottom:3}}>ALVO 5:1 🚀</div>
-                          <div style={{fontFamily:'monospace',fontSize:13,color:'#4ade80',fontWeight:700}}>${fmt(sig.tradeSetup.tp2)}</div>
-                        </div>
+                        {Object.values((sig.tradeSetup as any).targets || {}).map((t: any) => (
+                          <div key={t.ratio} style={{background:`${t.color}08`,borderRadius:6,padding:'8px 12px',border:`0.5px solid ${t.color}33`}}>
+                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
+                              <div style={{fontSize:10,color:t.color,fontWeight:600}}>{t.label}</div>
+                              <div style={{fontSize:10,color:t.color,fontFamily:'monospace',background:`${t.color}22`,padding:'1px 6px',borderRadius:99}}>{t.ratio}</div>
+                            </div>
+                            <div style={{fontFamily:'monospace',fontSize:13,color:t.color,fontWeight:700}}>${fmt(t.tp)}</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
